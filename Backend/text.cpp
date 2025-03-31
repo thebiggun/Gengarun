@@ -2,7 +2,11 @@
 using namespace std;
 int main() {
     // Write Your Code here
-    cout<<"Hello World!";
-    cout<<"hey there";
+    cout<<"World";
+    int num = 10;
+    cout<<num;
+    cout<<endl;
+    cout<<"HUH";
+
     return 0;
 }

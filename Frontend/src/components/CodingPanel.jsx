@@ -1,4 +1,4 @@
-import React, { useRef, useContext, useEffect, useState, useCallback } from "react";
+import React, { useRef, useContext, useEffect, useState } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import { FaPlay } from "react-icons/fa";
 import axios from "axios";
@@ -14,19 +14,15 @@ int main() {
     return 0;
 }`;
 
-const CodingPanel = ({ userData, openFile }) => {
+const CodingPanel = ({ userData, openFile, connected, roomID }) => {
     const editorRef = useRef(null);
     const { setOutput } = useContext(OutputContext);
     const [isLoading, setIsLoading] = useState(false);
-    const [initialContent, setInitialContent] = useState(defaultCode);
     const [isEditorMounted, setIsEditorMounted] = useState(false);
     const [currentContent, setCurrentContent] = useState(defaultCode);
-    const saveTimeoutRef = useRef(null);
 
-    // 1. Fetch content when openFile changes
     useEffect(() => {
         if (!openFile) {
-            setInitialContent(defaultCode);
             setCurrentContent(defaultCode);
             return;
         }
@@ -34,72 +30,42 @@ const CodingPanel = ({ userData, openFile }) => {
         const fetchFileContent = async () => {
             setIsLoading(true);
             try {
-                const response = await axios.post("http://localhost:3000/fileContent/getFileContent", {
-                    username: userData.username,
-                    filename: openFile
-                });
-                
+                const baseURL = "http://localhost:3000/fileContent/getFileContent";
+
+                const payload = connected
+                    ? { username: roomID, filename: openFile }
+                    : { username: userData.username, filename: openFile };
+
+                const response = await axios.post(baseURL, payload);
                 const content = response.data.content?.replace(/\\n/g, '\n') || defaultCode;
-                setInitialContent(content);
+
                 setCurrentContent(content);
-                
+
                 if (isEditorMounted && editorRef.current) {
                     editorRef.current.setValue(content);
                 }
             } catch (error) {
                 console.error("Error fetching file content:", error);
-                setInitialContent(defaultCode);
                 setCurrentContent(defaultCode);
             } finally {
                 setIsLoading(false);
             }
         };
-        
+
         fetchFileContent();
-    }, [openFile, userData.username, isEditorMounted]);
+    }, [openFile, userData.username, isEditorMounted, connected, roomID]);
 
-    // Add auto-save function
-    const autoSave = useCallback(async (content) => {
-        if (!openFile) return;
-        
-        try {
-            await axios.post("http://localhost:3000/fileContent/saveFileContent", {
-                text: content,
-                filename: openFile,
-                username: userData.username
-            });
-            console.log("Auto-saved successfully");
-        } catch (err) {
-            console.error("Auto-save error:", err);
-        }
-    }, [openFile, userData.username]);
-
-    // Debounced save function
-    const debouncedSave = useCallback((content) => {
-        if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-        }
-        
-        saveTimeoutRef.current = setTimeout(() => {
-            autoSave(content);
-        }, 1000); // Save after 1 second of no typing
-    }, [autoSave]);
-
-    // 2. Handle editor mount
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;
         setIsEditorMounted(true);
         defineCustomTheme(monaco);
         monaco.editor.setTheme("myCustomTheme");
-        
-        // Set the initial value
+
         editor.setValue(currentContent);
-        
-        // Listen for changes to update our state and trigger auto-save
+
         editor.onDidChangeModelContent(() => {
             const newContent = editor.getValue();
             setCurrentContent(newContent);
-            debouncedSave(newContent);
         });
     };
 
@@ -112,11 +78,9 @@ const CodingPanel = ({ userData, openFile }) => {
         setIsLoading(true);
         try {
             const codeContent = editorRef.current.getValue();
-            const body = { 
-                text: codeContent,
-                filename: openFile,
-                username: userData.username
-            };
+            const body = connected
+                ? { username: roomID, filename: openFile, text: codeContent }
+                : { username: userData.username, filename: openFile, text: codeContent };
 
             await axios.post("http://localhost:3000/fileContent/saveFileContent", body);
             const executeResponse = await axios.post("http://localhost:3000/fileSaving", body);
@@ -146,21 +110,12 @@ const CodingPanel = ({ userData, openFile }) => {
         });
     };
 
-    // Clean up timeout on unmount
-    useEffect(() => {
-        return () => {
-            if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-            }
-        };
-    }, []);
-
     return (
         <div className="relative pt-2 bg-[#111827] h-[60vh]">
             {openFile ? (
                 <>
                     <MonacoEditor
-                        key={openFile || "default"} // Force re-render when file changes
+                        key={openFile || "default"}
                         height="52vh"
                         defaultLanguage="cpp"
                         theme="myCustomTheme"
@@ -175,7 +130,7 @@ const CodingPanel = ({ userData, openFile }) => {
                         }}
                     />
                     <div className="absolute bottom-2 right-4">
-                        <button 
+                        <button
                             className={`bg-black hover:bg-neutral-900 hover:border-white hover:border text-white font-bold py-2 px-3 rounded flex items-center gap-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                             onClick={handleRun}
                             disabled={isLoading}

@@ -12,6 +12,8 @@ const MainPage = () => {
     const [isLoading, setIsLoading] = useState(true); // Loading state
     const [userData, setUserData] = useState({});
     const [openFile, setOpenFile] = useState('');
+    const [connected, setConnected] = useState(false);
+    const [room, setRoom] = useState(0);
 
     useEffect(() => {
         const verifyToken = async () => {
@@ -53,14 +55,14 @@ const MainPage = () => {
 
     return (
         <div className="h-screen flex flex-col">
-            <UpperBar />
+            <UpperBar connected={connected} setConnected = {setConnected} room={room} setRoom = {setRoom}/>
             <div className="flex flex-grow">
                 <div className="w-50 bg-gray-800 h-full">
-                    <Navbar userData={userData} openFile={openFile} setOpenFile={setOpenFile}/>
+                    <Navbar userData={userData} openFile={openFile} setOpenFile={setOpenFile} connected = {connected} roomID = {room}/>
                 </div>
                 <div className="w-[70vw] h-full ml-[1px]">
                     <OutputProvider>
-                        <CodingPanel userData={userData} openFile={openFile}/>
+                        <CodingPanel userData={userData} openFile={openFile} connected = {connected} roomID = {room}/>
                         <Output />
                     </OutputProvider>
                 </div>
