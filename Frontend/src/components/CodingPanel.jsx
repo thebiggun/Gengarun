@@ -5,6 +5,8 @@ import axios from "axios";
 import { OutputContext } from "./OutputContext.jsx";
 import Lottie from "lottie-react";
 import Animation1 from "../assets/Animation1.json";
+import { io } from "socket.io-client";
+import debounce from "lodash.debounce"; // Import lodash debounce
 
 const defaultCode = `#include <bits/stdc++.h>
 using namespace std;
@@ -14,6 +16,8 @@ int main() {
     return 0;
 }`;
 
+const socket = io("http://localhost:3000"); // Ensure single socket connection
+
 const CodingPanel = ({ userData, openFile, connected, roomID }) => {
     const editorRef = useRef(null);
     const { setOutput } = useContext(OutputContext);
@@ -21,6 +25,17 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
     const [isEditorMounted, setIsEditorMounted] = useState(false);
     const [currentContent, setCurrentContent] = useState(defaultCode);
     const [lastSavedContent, setLastSavedContent] = useState(defaultCode);
+    const [lock, setLock] = useState(false); // Lock state for the editor
+    const [isLockedByOther, setIsLockedByOther] = useState(false); // Track if another user has the lock
+    const lastContentRef = useRef(""); // Track last content to prevent unnecessary updates
+    const typingTimeoutRef = useRef(null); // Timeout reference for releasing the lock
+
+    // Debounced function to emit file updates
+    const emitFileUpdate = useRef(
+        debounce((roomID, filename, content) => {
+            socket.emit("fileUpdate", { roomID, filename, content });
+        }, 300) // 300ms debounce delay
+    ).current;
 
     useEffect(() => {
         if (!openFile) {
@@ -57,11 +72,55 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
     }, [openFile, userData.username, isEditorMounted, connected, roomID]);
 
     useEffect(() => {
+        if (connected && openFile) {
+            // Join the room
+            socket.emit("joinRoom", { roomID, filename: openFile });
+
+            // Listen for file updates from other users
+            socket.on("fileUpdate", (updatedContent) => {
+                if (editorRef.current) {
+                    const currentEditorContent = editorRef.current.getValue();
+
+                    // Only update the editor if the content has changed
+                    if (currentEditorContent !== updatedContent) {
+                        const currentPosition = editorRef.current.getPosition(); // Save cursor position
+                        editorRef.current.setValue(updatedContent); // Update content
+                        editorRef.current.setPosition(currentPosition); // Restore cursor position
+                    }
+                }
+            });
+
+            // Listen for lock updates
+            socket.on("lockUpdate", ({ lockedBy }) => {
+                if (lockedBy !== socket.id) {
+                    setIsLockedByOther(true); // Lock the editor for this user
+                } else {
+                    setIsLockedByOther(false); // Unlock the editor for this user
+                }
+            });
+
+            // Listen for lock release
+            socket.on("releaseLock", () => {
+                setIsLockedByOther(false); // Unlock the editor for all users
+            });
+        }
+
+        return () => {
+            // Clean up the listener when the component unmounts or dependencies change
+            socket.off("fileUpdate");
+            socket.off("lockUpdate");
+            socket.off("releaseLock");
+        };
+    }, [connected, openFile, roomID]);
+
+    useEffect(() => {
         if (!editorRef.current) return;
 
         const timeout = setTimeout(async () => {
             const codeContent = editorRef.current.getValue();
             if (codeContent === lastSavedContent) return;
+
+            lastContentRef.current = codeContent; // Track last content
 
             const payload = connected
                 ? { username: roomID, filename: openFile, text: codeContent }
@@ -85,11 +144,42 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
         defineCustomTheme(monaco);
         monaco.editor.setTheme("myCustomTheme");
 
-        editor.setValue(currentContent);
+        if (editor.getValue() !== currentContent) {
+            editor.setValue(currentContent);
+        }
 
         editor.onDidChangeModelContent(() => {
             const newContent = editor.getValue();
             setCurrentContent(newContent);
+
+            if (connected && openFile && newContent !== lastContentRef.current) {
+                lastContentRef.current = newContent;
+
+                // Emit file update only if the user has the lock
+                if (!isLockedByOther) {
+                    emitFileUpdate(roomID, openFile, newContent); // Debounced socket emission
+                    debounceLockRelease(); // Reset the lock release timeout
+                }
+            }
+        });
+
+        editor.onDidFocusEditorText(() => {
+            // Request lock when the user starts typing
+            if (!lock && !isLockedByOther) {
+                setLock(true);
+                socket.emit("lockUpdate", { roomID, filename: openFile, lockedBy: socket.id });
+            }
+        });
+
+        editor.onDidBlurEditorText(() => {
+            // Release lock immediately when the user stops typing
+            if (lock) {
+                setLock(false);
+                socket.emit("releaseLock", { roomID, filename: openFile });
+
+                // Flush any pending debounced updates
+                emitFileUpdate.flush();
+            }
         });
     };
 
@@ -125,7 +215,7 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
                 { token: "keyword", foreground: "FFA500" },
                 { token: "string", foreground: "46d17a" },
                 { token: "comment", foreground: "808080", fontStyle: "italic" },
-                { token: "identifier", foreground: "7DC3FF" }
+                { token: "identifier", foreground: "7DC3FF" },
             ],
             colors: {
                 "editor.background": "#111827",
@@ -150,12 +240,15 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
                             minimap: { enabled: false },
                             fontSize: 14,
                             scrollBeyondLastLine: false,
-                            automaticLayout: true
+                            automaticLayout: true,
+                            readOnly: isLockedByOther, // Disable editor if locked by another user
                         }}
                     />
                     <div className="absolute bottom-2 right-4">
                         <button
-                            className={`bg-black hover:bg-neutral-900 hover:border-white hover:border text-white font-bold py-2 px-3 rounded flex items-center gap-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                            className={`bg-black hover:bg-neutral-900 hover:border-white hover:border text-white font-bold py-2 px-3 rounded flex items-center gap-2 ${
+                                isLoading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                            }`}
                             onClick={handleRun}
                             disabled={isLoading}
                         >
