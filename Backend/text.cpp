@@ -2,11 +2,8 @@
 using namespace std;
 int main() {
     // Write Your Code here
-    cout<<"World";
-    int num = 10;
-    cout<<num;
-    cout<<endl;
-    cout<<"HUH";
-
+    int integer = 23;
+    int integer2 = 24;
+    cout<<"the number is" << integer + integer2;
     return 0;
 }

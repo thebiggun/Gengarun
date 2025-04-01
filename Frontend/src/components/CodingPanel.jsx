@@ -20,6 +20,7 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isEditorMounted, setIsEditorMounted] = useState(false);
     const [currentContent, setCurrentContent] = useState(defaultCode);
+    const [lastSavedContent, setLastSavedContent] = useState(defaultCode);
 
     useEffect(() => {
         if (!openFile) {
@@ -31,7 +32,6 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
             setIsLoading(true);
             try {
                 const baseURL = "http://localhost:3000/fileContent/getFileContent";
-
                 const payload = connected
                     ? { username: roomID, filename: openFile }
                     : { username: userData.username, filename: openFile };
@@ -40,6 +40,7 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
                 const content = response.data.content?.replace(/\\n/g, '\n') || defaultCode;
 
                 setCurrentContent(content);
+                setLastSavedContent(content);
 
                 if (isEditorMounted && editorRef.current) {
                     editorRef.current.setValue(content);
@@ -54,6 +55,29 @@ const CodingPanel = ({ userData, openFile, connected, roomID }) => {
 
         fetchFileContent();
     }, [openFile, userData.username, isEditorMounted, connected, roomID]);
+
+    useEffect(() => {
+        if (!editorRef.current) return;
+
+        const timeout = setTimeout(async () => {
+            const codeContent = editorRef.current.getValue();
+            if (codeContent === lastSavedContent) return;
+
+            const payload = connected
+                ? { username: roomID, filename: openFile, text: codeContent }
+                : { username: userData.username, filename: openFile, text: codeContent };
+
+            try {
+                await axios.post("http://localhost:3000/fileContent/saveFileContent", payload);
+                console.log("File autosaved");
+                setLastSavedContent(codeContent);
+            } catch (error) {
+                console.error("Autosave failed", error);
+            }
+        }, 1000);
+
+        return () => clearTimeout(timeout);
+    }, [currentContent, openFile, roomID, userData.username, connected]);
 
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;

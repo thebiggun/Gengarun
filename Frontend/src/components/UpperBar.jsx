@@ -6,6 +6,7 @@ const UpperBar = ({ connected, setConnected, setRoom }) => {
     const [projectName, setProjectName] = useState("Project Name");
     const [showPopup, setShowPopup] = useState(false);
     const [roomID, setRoomID] = useState("");
+    const [localRoom, setLocalRoom] = useState(""); // Renamed to avoid conflict
     const popupRef = useRef(null);
 
     // ✅ Close popup when clicking outside
@@ -24,7 +25,8 @@ const UpperBar = ({ connected, setConnected, setRoom }) => {
         try {
             const res = await axios.get("http://localhost:3000/Rooms/createRoom");
             console.log("Room Created:", res.data);
-            setRoom(res.data.roomId);
+            setRoom(res.data.roomID); // Use the prop function to update the parent state
+            setLocalRoom(res.data.roomID); // Update the local state
             setShowPopup(false);
             setConnected(true);
         } catch (error) {
@@ -34,15 +36,16 @@ const UpperBar = ({ connected, setConnected, setRoom }) => {
 
     const handleJoinRoom = async () => {
         try {
-            const res = await axios.post("http://localhost:3000/Rooms/joinRoom", {roomID :roomID}, { headers: { "Content-Type": "application/json" } });
+            const res = await axios.post("http://localhost:3000/Rooms/joinRoom", { roomID }, { headers: { "Content-Type": "application/json" } });
             console.log("Room Joined:", res.data);
-            setRoom(roomID);
+            setRoom(roomID); // Use the prop function to update the parent state
+            setLocalRoom(roomID); // Update the local state
             setShowPopup(false);
             setConnected(true);
         } catch (error) {
             console.error("Error joining room:", error);
         }
-    }
+    };
 
     return (
         <div className="p-2 flex items-center justify-between relative">
@@ -65,7 +68,7 @@ const UpperBar = ({ connected, setConnected, setRoom }) => {
                 {connected ? (
                     <div className="bg-[#dcfce7] px-2 py-1 rounded-lg ml-2 text-green-800 font-semibold flex items-center gap-2">
                         <FaDotCircle />
-                        Connected (RoomID:{ roomID})
+                        Connected (RoomID: {localRoom})
                     </div>
                 ) : (
                     <div className="bg-[#fcd9d9] px-2 py-1 rounded-lg ml-2 text-red-800 font-semibold flex items-center gap-2">
