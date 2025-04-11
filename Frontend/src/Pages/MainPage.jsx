@@ -60,7 +60,7 @@ const MainPage = () => {
                 <div className="w-50 bg-gray-800 h-full">
                     <Navbar userData={userData} openFile={openFile} setOpenFile={setOpenFile} connected = {connected} roomID = {room}/>
                 </div>
-                <div className="w-[70vw] h-full ml-[1px]">
+                <div className="w-[100vw] h-full ml-[1px]">
                     <OutputProvider>
                         <CodingPanel userData={userData} openFile={openFile} connected = {connected} roomID = {room}/>
                         <Output />
